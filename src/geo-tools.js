@@ -1,7 +1,101 @@
 var https = require('https');
+var http = require('http');
+
 var url = require('url');
 
 var Logix360GeoTools = {
+
+	requestLACGoogle: function(countrycode, operatorid, lac, cellid, onComplete) {
+		lac = parseInt(lac,16);
+		cellid = parseInt(cellid,16);
+
+	  var options, req, request;
+	  options = {
+	    hostname: "www.google.com",
+	    port: 80,
+	    method: "POST",
+	    path: "/glm/mmap"
+	  };
+	  req = http.request(options, function(res) {
+	    var response;
+	    res.setEncoding('hex');
+	    response = '';
+	    res.on('data', function(chunk) {
+
+	      return response += chunk;
+	    });
+	    return res.on('end', function() {
+	      var err;
+				console.log(response.length);
+
+	      try {
+	        if (response.length < 30) {
+	          return onComplete(new Error(E_NOTFOUND), null);
+	        } else {
+	          return onComplete({
+	            lat: (~~parseInt(response.slice(14, 22), 16)) / 1000000,
+	            lon: (~~parseInt(response.slice(22, 30), 16)) / 1000000
+	          });
+	        }
+	      } catch (_error) {
+	        err = _error;
+	        return onComplete(new Error(E_REQERROR), null);
+	      }
+	    });
+	  });
+	  request = '000e00000000000000000000000000001b0000000000000000000000030000';
+	  request += ('00000000' + Number(cellid).toString(16)).substr(-8);
+	  request += ('00000000' + Number(lac).toString(16)).substr(-8);
+	  request += ('00000000' + Number(operatorid).toString(16)).substr(-8);
+	  request += ('00000000' + Number(countrycode).toString(16)).substr(-8);
+	  request += 'ffffffff00000000';
+	  req.on('error', function(err) {
+	    return onComplete(new Error(E_REQERROR), null);
+	  });
+	  return req.end(new Buffer(request, 'hex'));
+	},
+
+	requestLACOpenCellId: function(myOptions,mcc,mnc,lac, cellId, callback){
+		if(myOptions.openCellIdAPIKey){
+			var query = '?key='+myOptions.openCellIdAPIKey+'&mcc='+mcc+'&mnc='+mnc+'&cellid='+parseInt(cellId,16)+'&lac='+parseInt(lac,16)+'&format=json',
+					options = {
+						host : 'opencellid.org',
+						path: '/cell/get' + query
+					};
+			var req = http.get(options, function(res) {
+				console.log('Response: ' + res.statusCode);
+				var results = '';
+				res.on('error', function(e) {
+					console.log('Got error: ' + e.message);
+
+				});
+
+				res.on('data', function(data) {
+					results += data;
+				});
+				res.on('end', function() {
+					var body = JSON.parse(results);
+					if (body.error_message) {
+						console.log(body.error_message);
+						return;
+					}
+					var location = Logix360GeoTools.parseLACOpenCellId(body)
+					if (callback) {
+						callback(location);
+					} else {
+						return location;
+					};
+				});
+			});
+		}else{
+			callback("OpencellId API Not Found");
+		}
+	},
+
+	parseLACOpenCellId: function(data){
+		var location = {lat:data.lat,lng:data.lon,mcc:data.mcc,mnc:data.mnc,lac:data.lac,cellId:data.cellid,range:data.range}
+		return location;
+	},
 
 	requestReverseGeo: function(myOptions,lat,lng,callback) {
 		if (lat.lat && lat.lng) {
@@ -9,28 +103,36 @@ var Logix360GeoTools = {
 			lng = lat.lng
 			lat = lat.lat
 		};
-		var probability
+		var probability;
+		var providers = [];
 		if(myOptions.probability){
 			 probability = myOptions.probability;
 		}else{
 			probability = [10,2,1,1,1,1];
 		}
+		if(myOptions.providers){
+			providers = myOptions.providers;
+		}else{
+			if(myOptions.googleAPIKey) providers.push("Google");
+			if(myOptions.bingAPIKey) providers.push("Bing");
+			if(myOptions.openstreetmap) providers.push("OSM");
+		}
 		var notRandomNumber = [];
-		for(var key in myOptions.providers){
+		for(var key in providers){
 			for (var i = 0; i < probability[key]; i++) {
 				notRandomNumber.push(key);
 			}
 		}
 		var idx = Math.floor(Math.random() * notRandomNumber.length);
-		if(myOptions.providers[notRandomNumber[idx]] == "Google"){
+		if(providers[notRandomNumber[idx]] == "Google"){
 			Logix360GeoTools.requestReverseGeoCodeGoogle(myOptions,lat,lng, function(res){
 			callback (res);
 			})
-		}else if(myOptions.providers[notRandomNumber[idx]] == "Bing"){
+		}else if(providers[notRandomNumber[idx]] == "Bing"){
 			Logix360GeoTools.requestReverseGeoCodeBingMaps(myOptions,lat,lng, function(res){
 			callback (res);
 			})
-		}else if(myOptions.providers[notRandomNumber[idx]] == "OSM"){
+		}else if(providers[notRandomNumber[idx]] == "OSM"){
 			Logix360GeoTools.requestReverseGeoCodeOSM(lat,lng, function(res){
 			callback (res);
 			})
@@ -68,7 +170,6 @@ var Logix360GeoTools = {
 					console.log(body.error_message);
 					return;
 				}
-				// var address = Logix360GeoTools.parseReverseGeoAddressGoogle(body)
 				var address = body;
 				if (callback) {
 					callback(address);
@@ -77,8 +178,6 @@ var Logix360GeoTools = {
 				};
 			});
 		});
-
-
 	},
 
 	requestReverseGeoCodeBingMaps: function(myOptions,lat,lng,callback) {
@@ -87,7 +186,6 @@ var Logix360GeoTools = {
 			lng = lat.lng
 			lat = lat.lat
 		};
-
 		var query = lat.toString() + ',' + lng.toString() + '?o=json&key='+myOptions.bingAPIKey,
 				options = {
 					host : 'dev.virtualearth.net',
@@ -116,12 +214,9 @@ var Logix360GeoTools = {
 				};
 			});
 		});
-
-
 	},
 
 	parseReverseGeoBingResuts: function(data) {
-
 		var address = {
 			provider: "Bing",
 			full_address : data.resourceSets[0].resources[0].address.formattedAddress
@@ -142,8 +237,6 @@ var Logix360GeoTools = {
 		if(data.resourceSets[0].resources[0].address.locality){
 			address.municipality2 = data.resourceSets[0].resources[0].address.locality;
 		}
-
-
 		return address;
 	},
 
@@ -153,7 +246,6 @@ var Logix360GeoTools = {
 			lng = lat.lng
 			lat = lat.lat
 		};
-
 		var query = lat.toString() + ',' + lng.toString() + '&sensor=false',
 				options = {
 					host : 'maps.googleapis.com',
@@ -182,8 +274,6 @@ var Logix360GeoTools = {
 				};
 			});
 		});
-
-
 	},
 
 	parseReverseGeoAddressGoogle: function(data){
@@ -269,12 +359,11 @@ var Logix360GeoTools = {
 			return false;
     };
   },
-  // Converts numeric degrees to radians. Used in computeDistance()
+
   degToRad: function(deg) {
 	    return deg * Math.PI / 180;
 	},
 
-  //Converts KM into miles
 	kmToMiles: function(km) {
 		if(parseFloat(km) === NaN || km === false){
 			return false;
@@ -283,7 +372,6 @@ var Logix360GeoTools = {
 		}
 	},
 
-	//Converts KM into meters
 	kmToMeters: function(km) {
 		if(parseFloat(km) === NaN || km === false){
 			return false;
@@ -292,7 +380,6 @@ var Logix360GeoTools = {
 		}
 	},
 
-	//Converts KM into yards
 	kmToYards: function(km) {
 		if(parseFloat(km) === NaN || km === false){
 			return false;
@@ -301,7 +388,6 @@ var Logix360GeoTools = {
 		}
 	},
 
-	//Converts KM into feet
 	kmToFeet: function(km) {
 		if(parseFloat(km) === NaN || km === false){
 			return false;
