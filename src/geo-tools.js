@@ -1,13 +1,12 @@
 var https = require('https');
 var http = require('http');
-
 var url = require('url');
 
 var Logix360GeoTools = {
 
-	requestLACGoogle: function(countrycode, operatorid, lac, cellid, onComplete) {
+	requestLACGoogle: function(mcc, mnc, lac, cellId, callback) {
 		lac = parseInt(lac,16);
-		cellid = parseInt(cellid,16);
+		cellId = parseInt(cellId,16);
 
 	  var options, req, request;
 	  options = {
@@ -30,27 +29,28 @@ var Logix360GeoTools = {
 
 	      try {
 	        if (response.length < 30) {
-	          return onComplete(new Error(E_NOTFOUND), null);
+	          return callback(new Error(E_NOTFOUND), null);
 	        } else {
-	          return onComplete({
+	          return callback({
+							provider: 'Google',
 	            lat: (~~parseInt(response.slice(14, 22), 16)) / 1000000,
-	            lon: (~~parseInt(response.slice(22, 30), 16)) / 1000000
+	            lng: (~~parseInt(response.slice(22, 30), 16)) / 1000000
 	          });
 	        }
 	      } catch (_error) {
 	        err = _error;
-	        return onComplete(new Error(E_REQERROR), null);
+	        return callback(new Error(E_REQERROR), null);
 	      }
 	    });
 	  });
 	  request = '000e00000000000000000000000000001b0000000000000000000000030000';
-	  request += ('00000000' + Number(cellid).toString(16)).substr(-8);
+	  request += ('00000000' + Number(cellId).toString(16)).substr(-8);
 	  request += ('00000000' + Number(lac).toString(16)).substr(-8);
-	  request += ('00000000' + Number(operatorid).toString(16)).substr(-8);
-	  request += ('00000000' + Number(countrycode).toString(16)).substr(-8);
+	  request += ('00000000' + Number(mnc).toString(16)).substr(-8);
+	  request += ('00000000' + Number(mcc).toString(16)).substr(-8);
 	  request += 'ffffffff00000000';
 	  req.on('error', function(err) {
-	    return onComplete(new Error(E_REQERROR), null);
+	    return callback(new Error(E_REQERROR), null);
 	  });
 	  return req.end(new Buffer(request, 'hex'));
 	},
@@ -93,7 +93,7 @@ var Logix360GeoTools = {
 	},
 
 	parseLACOpenCellId: function(data){
-		var location = {lat:data.lat,lng:data.lon,mcc:data.mcc,mnc:data.mnc,lac:data.lac,cellId:data.cellid,range:data.range}
+		var location = {provider:'OpenCellId',lat:data.lat,lng:data.lon,mcc:data.mcc,mnc:data.mnc,lac:data.lac,cellId:data.cellid,range:data.range}
 		return location;
 	},
 
