@@ -1,0 +1,19 @@
+{
+  "name": "360logixGeoTools",
+  "version": "1.0.0",
+  "description": "Tools to help geocode, reverse geocode, find LAC, and calculate location distances",
+  "main": "./src/geo-tools",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "author": "Paolo Brainard M. Reyes <xreyes.paolox@gmail.com> (http://360logix.com)",
+  "keywords": [
+    "geocode",
+    "geodistance",
+    "geo",
+    "geo-tools",
+    "distance",
+    "coordinates"
+  ],
+  "license": "ISC"
+}
